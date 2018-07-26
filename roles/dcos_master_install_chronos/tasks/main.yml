@@ -1,0 +1,8 @@
+- name: Deploy Chronos
+  uri:
+    url: "http://{{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}:8080/v2/apps"
+    body: "{{ lookup('file', 'chronos.json') | from_json }}"
+    body_format: json
+    status_code: 201
+    method: POST
+

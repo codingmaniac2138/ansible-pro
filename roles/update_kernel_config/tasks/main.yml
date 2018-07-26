@@ -1,0 +1,17 @@
+- name: Replace /etc/sysctl.conf
+  file:
+    src: sysctl.conf
+    dest: /etc/sysctl.conf
+    force: yes
+  become: true
+
+- name: Make kernel configuration take effect
+  shell: sysctl -p
+  become: true
+
+
+
+
+
+
+

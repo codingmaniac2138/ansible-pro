@@ -1,0 +1,33 @@
+- name: Create DC/OS bootstrap node
+  ec2:
+    region: "{{ dcos.bootstrap.region }}"
+    image: "{{ region_ami_map[dcos.bootstrap.region] }}"
+    instance_type: "{{ dcos.bootstrap.instance_type }}"
+    assign_public_ip: yes
+    key_name: "{{ ansible_ssh_user }}"
+    vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[dcos.bootstrap.region]] }}"
+    count_tag:
+      Name: "{{ prefix }}-dcos-bootstrap"
+    instance_tags:
+      Name: "{{ prefix }}-dcos-bootstrap"
+    exact_count: 1
+    volumes:
+      - device_name: /dev/sda1
+        volume_type: gp2
+        volume_size: "{{ dcos.bootstrap.disk_size }}"
+        delete_on_termination: true
+  register: dcos_bootstrap_instance
+  when: region.aws and install.dcos
+  until: >
+    'tagged_instances' in dcos_bootstrap_instance and dcos_bootstrap_instance.tagged_instances.0.public_ip
+  retries: "{{ max_retries }}"
+
+- name: Assign DC/OS masters to groups
+  add_host:
+    hostname: "{{ dcos_bootstrap_instance.tagged_instances.0.public_ip }}"
+    groupname:
+      - aws
+      - common
+      - dcos_common
+      - dcos_bootstrap
+  when: region.aws and install.dcos

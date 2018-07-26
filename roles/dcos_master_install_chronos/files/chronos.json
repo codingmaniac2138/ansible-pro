@@ -1,0 +1,62 @@
+{
+	"id": "/sys/chronos",
+	"instances": 1,
+	"cpus": 2,
+	"mem": 2048,
+	"args":
+	[
+		"--zk_hosts",
+    	"zk-1.zk:2181,zk-2.zk:2181,zk-3.zk:2181,zk-4.zk:2181,zk-5.zk:2181/marathon",
+    	"--master",
+    	"zk://zk-1.zk:2181,zk-2.zk:2181,zk-3.zk:2181,zk-4.zk:2181,zk-5.zk:2181/mesos",
+    	"--http_port",
+    	"9090"
+	],
+	"container": {
+		"type": "DOCKER",
+		"volumes": [],
+		"docker": {
+			"image": "heliumdatacommons/chronos",
+			"privileged": false,
+			"parameters": [],
+			"forcePullImage": true
+		}
+	},
+	"networks": [
+		{ "mode": "host" }
+	],
+	"portDefinitions": [
+		{
+			"labels": {
+				"VIP_0": "/chronos:9090"
+			},
+			"protocol": "tcp",
+			"port": 9090
+		}
+	],
+	"requirePorts": true,
+    "healthChecks": [
+	     {
+	      "gracePeriodSeconds": 300,
+	      "intervalSeconds": 60,
+	      "maxConsecutiveFailures": 3,
+	      "portIndex": 0,
+	      "timeoutSeconds": 120,
+	      "delaySeconds": 30,
+	      "protocol": "MESOS_HTTP",
+	      "path": "/"
+	    }
+    ],
+	"upgradeStrategy": {
+        "minimumHealthCapacity": 0,
+        "maximumOverCapacity": 0
+    },
+    "labels": {
+	    "DCOS_SERVICE_SCHEME": "http",
+	    "DCOS_PACKAGE_SOURCE": "https://universe.mesosphere.com/repo",
+	    "DCOS_PACKAGE_METADATA": "eyJwYWNrYWdpbmdWZXJzaW9uIjoiNC4wIiwibmFtZSI6ImNocm9ub3MiLCJ2ZXJzaW9uIjoiMi41LjEiLCJtYWludGFpbmVyIjoic3VwcG9ydEBtZXNvc3BoZXJlLmlvIiwiZGVzY3JpcHRpb24iOiJBIGZhdWx0IHRvbGVyYW50IGpvYiBzY2hlZHVsZXIgZm9yIE1lc29zIHdoaWNoIGhhbmRsZXMgZGVwZW5kZW5jaWVzIGFuZCBJU084NjAxIGJhc2VkIHNjaGVkdWxlcy4iLCJ0YWdzIjpbImNyb24iLCJhbmFseXRpY3MiLCJiYXRjaCJdLCJzZWxlY3RlZCI6dHJ1ZSwic2NtIjoiaHR0cHM6Ly9naXRodWIuY29tL21lc29zL2Nocm9ub3MuZ2l0IiwiZnJhbWV3b3JrIjp0cnVlLCJwcmVJbnN0YWxsTm90ZXMiOiJXZSByZWNvbW1lbmQgYSBtaW5pbXVtIG9mIG9uZSBub2RlIHdpdGggYXQgbGVhc3QgMSBDUFUgYW5kIDJHQiBvZiBSQU0gYXZhaWxhYmxlIGZvciB0aGUgQ2hyb25vcyBTZXJ2aWNlLiIsInBvc3RJbnN0YWxsTm90ZXMiOiJDaHJvbm9zIERDT1MgU2VydmljZSBoYXMgYmVlbiBzdWNjZXNzZnVsbHkgaW5zdGFsbGVkIVxuXG5cdERvY3VtZW50YXRpb246IGh0dHA6Ly9tZXNvcy5naXRodWIuaW8vY2hyb25vc1xuXHRJc3N1ZXM6IGh0dHBzOi8vZ2l0aHViLmNvbS9tZXNvcy9jaHJvbm9zL2lzc3VlcyIsInBvc3RVbmluc3RhbGxOb3RlcyI6IlRoZSBDaHJvbm9zIERDT1MgU2VydmljZSBoYXMgYmVlbiB1bmluc3RhbGxlZCBhbmQgd2lsbCBubyBsb25nZXIgcnVuLlxuUGxlYXNlIGZvbGxvdyB0aGUgaW5zdHJ1Y3Rpb25zIGF0IGh0dHBzOi8vZG9jcy5tZXNvc3BoZXJlLmNvbS9sYXRlc3QvZGVwbG95aW5nLXNlcnZpY2VzL3VuaW5zdGFsbC8gdG8gY2xlYW4gdXAgYW55IHBlcnNpc3RlZCBzdGF0ZS4iLCJsaWNlbnNlcyI6W3sibmFtZSI6IkFwYWNoZSBMaWNlbnNlIFZlcnNpb24gMi4wIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL21lc29zL2Nocm9ub3MvYmxvYi9tYXN0ZXIvTElDRU5TRSJ9XSwiaW1hZ2VzIjp7Imljb24tc21hbGwiOiJodHRwczovL2Rvd25sb2Fkcy5tZXNvc3BoZXJlLmNvbS9hc3NldHMvdW5pdmVyc2UvMDAwL2Nocm9ub3MtaWNvbi1zbWFsbC5wbmciLCJpY29uLW1lZGl1bSI6Imh0dHBzOi8vZG93bmxvYWRzLm1lc29zcGhlcmUuY29tL2Fzc2V0cy91bml2ZXJzZS8wMDAvY2hyb25vcy1pY29uLW1lZGl1bS5wbmciLCJpY29uLWxhcmdlIjoiaHR0cHM6Ly9kb3dubG9hZHMubWVzb3NwaGVyZS5jb20vYXNzZXRzL3VuaXZlcnNlLzAwMC9jaHJvbm9zLWljb24tbGFyZ2UucG5nIn19",
+	    "DCOS_SERVICE_NAME": "chronos",
+	    "DCOS_PACKAGE_FRAMEWORK_NAME": "chronos",
+	    "DCOS_SERVICE_PORT_INDEX": "0"
+    }
+}

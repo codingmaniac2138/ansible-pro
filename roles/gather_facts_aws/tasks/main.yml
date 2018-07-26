@@ -1,0 +1,16 @@
+- name: Get region
+  uri:
+    url: http://169.254.169.254/latest/meta-data/placement/availability-zone
+    return_content: yes
+  register: aws_region
+
+- name: Set variable "region"
+  set_fact:
+    cloud: aws
+    region: "{{ aws_region.content }}"
+
+
+
+
+
+

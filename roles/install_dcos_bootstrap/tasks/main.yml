@@ -1,0 +1,50 @@
+- name: Install docker-py
+  pip:
+    name: docker-py
+    state: present
+  become: true
+
+- name: Create genconf directory
+  file:
+    path: /opt/genconf
+    state: directory
+  become: true
+
+- name: Create config.yaml
+  template:
+    src: config.yaml.j2
+    dest: /opt/genconf/config.yaml
+  become: true
+
+- name: Create ip-detect script
+  copy:
+    src: ip-detect
+    dest: /opt/genconf/ip-detect
+  become: true
+
+- name: Download dcos_generate_config.sh script
+  get_url:
+    url: "{{ dcos.bundle_url }}"
+    dest: /opt/dcos_generate_config.sh
+    mode: 0777
+  become: true
+
+- name: Generate dcos_install.sh
+  shell: /opt/dcos_generate_config.sh
+  args:
+    chdir: /opt
+    executable: /bin/bash
+  become: true
+
+- name: Publish dcos_install.sh
+  docker_container:
+    name: nginx
+    image: nginx
+    state: started
+    ports:
+      - "80:80"
+    volumes:
+      - /opt/genconf/serve:/usr/share/nginx/html:ro
+  become: true
+
+

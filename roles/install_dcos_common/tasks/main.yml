@@ -1,0 +1,96 @@
+- name: Install common packages
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - curl
+    - tar
+    - xz
+    - unzip
+    - ipset
+    - yum-utils
+    - device-mapper-persistent-data
+    - lvm2
+  when: install.dcos
+  become: true
+
+- name: Download get-pip.py
+  get_url:
+    url: https://bootstrap.pypa.io/get-pip.py
+    dest: /tmp/get-pip.py
+    mode: 0777
+  when: install.dcos
+
+- name: Install Python pip
+  command: /usr/bin/python /tmp/get-pip.py
+  become: true
+  when: install.dcos
+
+- name: Remove get-pip.py
+  file:
+    path: /tmp/get-pip.py
+    state: absent
+  when: install.dcos
+
+- name: Create Overlay configuration for Docker
+  copy:
+    src: overlay.conf
+    dest: /etc/modules-load.d/overlay.conf
+  become: true
+
+- name: Load Overlay module
+  modprobe:
+    name: overlay
+    state: present
+  become: true
+
+- name: Create Docker repo
+  copy:
+    src: docker.repo
+    dest: /etc/yum.repos.d/docker.repo
+  become: true
+
+- name: Create Docker Systemd directory
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+  become: true
+
+- name: Install Docker engine
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - docker-engine
+    - docker-engine-selinux
+  become: true
+
+- name: Start Docker
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: true
+
+- name: Disable SELinux
+  selinux:
+    state: disabled
+  become: true
+  notify:
+    - Reboot
+    - Wait for rebooted nodes to come back
+
+- name: Add groups
+  group:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - docker
+    - nogroup
+  become: true
+
+- name: Copy host mappings
+  template:
+    src: hosts.j2
+    dest: /etc/hosts
+  become: true

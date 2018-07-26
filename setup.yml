@@ -1,0 +1,110 @@
+- hosts: localhost
+  roles:
+    - create_gcp_vpc
+    - create_gcp_vpn_gateway
+    - create_aws_key
+    - collect_ami_info
+    - create_aws_vpc
+    - create_aws_vpn_gateway
+    - wait_for_gateway
+    - collect_gateway_info
+
+- hosts: gcp_gateway
+  roles:
+    - disable_firewalld
+
+#- hosts: gateway
+#  roles:
+#    - upgrade_packages
+#    - install_openswan
+#
+#- hosts: gcp_gateway
+#  roles:
+#    - gw_gcp_add_tunnel
+#
+#- hosts: aws_gateway
+#  roles:
+#    - gw_aws_add_tunnel
+
+- hosts: localhost
+  roles:
+    - create_aws_dcos_bootstrap_instance
+    - create_aws_dcos_master_instance
+    - create_aws_dcos_agent_instance
+    - create_gcp_dcos_agent_instance
+
+- hosts: localhost
+  roles:
+    - create_aws_irods_icat_instance
+    - create_aws_irods_resource_instance
+    - create_gcp_irods_resource_instance
+
+- hosts: localhost
+  roles:
+    - wait_for_instances
+
+- hosts: aws
+  roles:
+    - gather_facts_aws
+
+- hosts: gcp
+  roles:
+    - disable_firewalld
+    - update_kernel_config
+    - gather_facts_gcp
+
+# deploy DC/OS
+- hosts: dcos_common
+  roles:
+    - upgrade_packages
+    - install_dcos_common
+
+- hosts: dcos_bootstrap
+  roles:
+    - install_dcos_bootstrap
+
+- hosts: dcos_master
+  roles:
+    - install_dcos_master
+
+- hosts: dcos_agent
+  roles:
+    - install_dcos_agent
+
+- hosts: dcos_master
+  roles:
+    - dcos_master_add_fw_rules
+    - dcos_master_install_chronos
+    - dcos_master_install_pivot
+
+- hosts: dcos_agent
+  roles:
+    - dcos_agent_add_metadata
+
+- hosts: localhost
+  tasks:
+    - name: Stop DC/OS bootstrap instance on AWS
+      ec2_instance:
+        region: "{{ dcos.bootstrap.region }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-bootstrap"
+      async: 45
+      poll: 0
+
+# deploy iRODS
+- hosts: irods_common
+  roles:
+    - upgrade_packages
+    - install_irods_common
+
+- hosts: irods_icat
+  roles:
+    - install_postgresql_server
+    - install_irods_icat
+    - install_irods_rest_api
+
+- hosts: irods_resource
+  roles:
+    - install_irods_resource
+

@@ -1,0 +1,30 @@
+- name: Create iRODS resource servers on GCP
+  gce:
+    base_name: "{{ prefix }}-irods-resource-{{ item.name }}"
+    zone: "{{ item.name }}-b"
+    machine_type: "{{ irods.resource.gcp.machine_type }}"
+    num_instances: "{{ item.count.irods }}"
+    image: "{{ gcp.centos_image }}"
+    persistent_boot_disk: true
+    disk_size: "{{ irods.resource.disk_size }}"
+    network: "{{ prefix }}-vpc-{{ item.name }}"
+    subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+    ip_forward: true
+  register: gcp_irods_resource
+  ignore_errors: true
+  when: region.gcp and install.irods
+  with_items: "{{ region.gcp }}"
+  retries: "{{ max_retries }}"
+
+- name: Assign GCP iRODS resource to groups
+  add_host:
+    hostname: "{{ item.1.public_ip  }}"
+    groupname:
+      - gcp
+      - common
+      - irods_common
+      - irods_resource
+  when: region.gcp and install.irods
+  with_subelements:
+    - "{{ gcp_irods_resource.results }}"
+    - instance_data

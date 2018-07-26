@@ -1,0 +1,10 @@
+- name: Wait for SSH of the gateway instances
+  wait_for:
+    host: "{{ item }}"
+    port: 22
+    delay: 10
+    timeout: 60
+  when: >
+    'gateway' in groups
+  with_items: "{{ groups.gateway }}"
+

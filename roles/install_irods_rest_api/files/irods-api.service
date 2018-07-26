@@ -1,0 +1,12 @@
+[Unit]
+Description = Network-Aware iRODS API
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/network-aware-irods-api/server
+ExecStart=/usr/bin/python3 app.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,43 @@
+- name: Install OpenSwan
+  yum:
+    name: openswan
+    state: present
+  become: true
+
+- name: Turn on IP forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+    sysctl_set: yes
+    state: present
+    reload: yes
+  become: true
+
+- name: Turn off accept_redirects, send_redirects and rp_filter
+  sysctl:
+    name: net.ipv4.conf.all.{{item}}
+    value: 0
+    sysctl_set: yes
+    state: present
+    reload: yes
+  with_items:
+    - accept_redirects
+    - send_redirects
+    - rp_filter
+  become: true
+
+- name: Copy IPSec configuration file
+  file:
+    src: ipsec.conf
+    dest: /etc/ipsec.conf
+    force: yes
+  become: true
+
+- name: Copy IPSec secret file
+  template:
+    src: ipsec.secrets.j2
+    dest: /etc/ipsec.secrets
+    force: yes
+  become: true
+
+

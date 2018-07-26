@@ -1,0 +1,222 @@
+- hosts: localhost
+  tasks:
+    - name: Start iRODS iCAT instance on AWS
+      ec2_instance:
+        region: "{{ irods.icat.region }}"
+        state: started
+        filters:
+          'tag:Name': "{{ prefix }}-irods-icat-server"
+      register: irods_icat_instance
+      when: install.irods
+      until: >
+        'instances' in irods_icat_instance
+        and irods_icat_instance.instances
+        and irods_icat_instance.instances.0.public_ip_address
+
+    - name: Wait on the iCAT instance
+      wait_for:
+        host: "{{ irods_icat_instance.instances.0.public_ip_address }}"
+        port: 22
+        delay: 10
+        timeout: 60
+      when: install.irods
+
+    - name: Start iRODS Resource instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: started
+        filters:
+          'tag:Name': "{{ prefix }}-irods-resource-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+      when: install.irods
+      async: 45
+      poll: 0
+
+    - name: Start DC/OS master instances on AWS
+      ec2_instance:
+        region: "{{ dcos.master.region }}"
+        state: started
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-master-{{ item.0 }}"
+      with_indexed_items: "{{ dcos.master.zone }}"
+      when: install.dcos
+      async: 45
+      poll: 0
+
+    - name: Start DC/OS agent instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: started
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-agent-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+      when: install.dcos
+      async: 45
+      poll: 0
+
+    - name: Start iRODS Resource instances on GCP
+      gce:
+        base_name: "{{ prefix }}-irods-resource-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        num_instances: "{{ item.count.irods }}"
+        state: started
+      when: install.dcos
+      with_items: "{{ region.gcp }}"
+
+    - name: Get iRODS resource servers on GCP
+      gce:
+        base_name: "{{ prefix }}-irods-resource-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        machine_type: "{{ irods.resource.gcp.machine_type }}"
+        num_instances: "{{ item.count.irods }}"
+        image: "{{ gcp.centos_image }}"
+        disk_size: "{{ irods.resource.disk_size }}"
+        network: "{{ prefix }}-vpc-{{ item.name }}"
+        subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+        ip_forward: true
+      register: gcp_irods_resource
+      ignore_errors: true
+      when: region.gcp and install.irods
+      with_items: "{{ region.gcp }}"
+      retries: "{{ max_retries }}"
+
+    - name: Add iRODS resource servers on GCP to the group
+      add_host:
+        hostname: "{{ item.instance_data.0.public_ip }}"
+        groupname:
+          - gcp_irods_resources
+      when: region.gcp and install.irods
+      with_items: "{{ gcp_irods_resource.results }}"
+
+    - name: Start DC/OS agent instances on GCP
+      gce:
+        base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        num_instances: "{{ item.count.dcos }}"
+        state: started
+      when: region.gcp and install.dcos
+      with_items: "{{ region.gcp }}"
+      async: 45
+      poll: 0
+
+    - name: Get DC/OS agents on GCP
+      gce:
+        base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        machine_type: "{{ dcos.agent.gcp.machine_type }}"
+        num_instances: "{{ item.count.dcos }}"
+        image: "{{ gcp.centos_image }}"
+        disk_size: "{{ dcos.agent.disk_size }}"
+        persistent_boot_disk: True
+        network: "{{ prefix }}-vpc-{{ item.name }}"
+        subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+        ip_forward: true
+      register: gcp_dcos_agent
+      ignore_errors: true
+      when: region.gcp and install.dcos
+      with_items: "{{ region.gcp }}"
+      retries: "{{ max_retries }}"
+
+    - name: Assign DC/OS agents to groups
+      add_host:
+        hostname: "{{ item.1.public_ip }}"
+        groupname:
+          - dcos_agent
+      when: region.gcp and install.dcos
+      with_subelements:
+        - "{{ gcp_dcos_agent.results }}"
+        - instance_data
+
+    - name: Get DC/OS agents on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: started
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-agent-{{ item.name }}"
+      when: region.aws and install.dcos
+      with_items: "{{ region.aws }}"
+      register: aws_dcos_agent
+      ignore_errors: true
+      until: >
+        'instances' in aws_dcos_agent
+          and aws_dcos_agent
+          and aws_dcos_agent.instances.0.public_ip_address
+      retries: "{{ max_retries }}"
+
+    - name: Assign DC/OS agents to groups
+      add_host:
+        hostname: "{{ item.1.public_ip_address }}"
+        groupname:
+          - dcos_agent
+      when: region.aws and install.dcos
+      with_subelements:
+        - "{{ aws_dcos_agent.results }}"
+        - instances
+
+    - name: Wait on the DC/OS agents
+      wait_for:
+        host: "{{ item }}"
+        port: 22
+        delay: 10
+        timeout: 60
+      when: install.dcos
+      with_items: "{{ groups.dcos_agent }}"
+
+
+- hosts: gcp_irods_resources
+  tasks:
+    - name: Get private IP address
+      set_fact:
+        host_ip: "{{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}"
+      when: region.gcp and install.irods
+
+    - name: Remove existing hostname mapping of the private IP address
+      lineinfile:
+        path: /etc/hosts
+        regexp: "^{{ host_ip }}.*"
+        state: absent
+      become: true
+      when: region.gcp and install.irods
+
+    - name: Replace hostname with the private IP address in /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ host_ip }}\t{{ host_ip }}\t{{ host_ip }}"
+      become: true
+      when: region.gcp and install.irods
+
+    - name: Have hostname change take effect immediately
+      hostname:
+        name: "{{ host_ip }}"
+      become: true
+      when: region.gcp and install.irods
+
+- hosts: dcos_agent
+  tasks:
+    - name: Replace public IP address
+      replace:
+         path: /var/lib/dcos/mesos-slave-common
+         regexp: 'public_ip:[^;]*;'
+         replace: 'public_ip:{{ inventory_hostname }};'
+      when: install.dcos
+      become: true
+
+    - name: Stop Mesos slave
+      systemd:
+        state: stopped
+        name: dcos-mesos-slave
+      when: install.dcos
+      become: true
+
+    - name: Remove slave states
+      shell: rm -rf /var/lib/mesos/slave/meta/slaves/*
+      when: install.dcos
+      become: true
+
+    - name: Start Mesos slave
+      systemd:
+        state: started
+        name: dcos-mesos-slave
+        enabled: yes
+      when: install.dcos
+      become: true

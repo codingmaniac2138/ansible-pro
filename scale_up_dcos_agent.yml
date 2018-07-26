@@ -1,0 +1,188 @@
+- hosts: localhost
+  vars:
+    region:
+      aws:
+        - name: us-east-1
+          count: 1
+#        - name: us-east-2
+#          count: 1
+      gcp:
+        - name: us-east1
+          count: 1
+  tasks:
+    - set_fact:
+        region: "{{ region | default({}) | combine({item.key: item.value}) }}"
+      with_dict: "{{ region }}"
+
+- hosts: localhost
+  roles:
+    - collect_ami_info
+
+- hosts: localhost
+  tasks:
+    - name: Get VPC on AWS
+      ec2_vpc_net:
+        name: "{{ prefix }}-vpc-{{ item.1.name }}"
+        cidr_block: "{{ '10.52.%d.0/24' | format(item.0) }}"
+        region: "{{ item.1.name }}"
+        state: present
+      with_indexed_items: "{{ region.aws }}"
+      retries: "{{ max_retries }}"
+      when: region.aws
+      register: aws_vpc_out
+
+    - name: Create region-VPC mapping on AWS
+      set_fact:
+        region_vpc_map: "{{ region_vpc_map | default({}) | combine({item.item.1.name: item.vpc.id}) }}"
+      when: region.aws
+      with_items: "{{ aws_vpc_out.results }}"
+
+    - name: Get subnet
+      ec2_vpc_subnet:
+        region: "{{ item.item.1.name }}"
+        state: present
+        vpc_id: "{{ item.vpc.id }}"
+        cidr: "{{ item.vpc.cidr_block }}"
+      with_items: "{{ aws_vpc_out.results }}"
+      register: aws_subnet_out
+      when: region.aws
+      retries: "{{ max_retries }}"
+
+    - name: Create VPC-subnet mapping on AWS
+      set_fact:
+        vpc_subnet_map: "{{ vpc_subnet_map | default({}) | combine({item.subnet.vpc_id: item.subnet.id}) }}"
+      when: region.aws
+      with_items: "{{ aws_subnet_out.results }}"
+
+    - name: Create DC/OS agent instances on AWS
+      ec2:
+        region: "{{ item.name }}"
+        image: "{{ region_ami_map[item.name] }}"
+        instance_type: "{{ dcos.agent.aws.instance_type }}"
+        assign_public_ip: yes
+        key_name: "{{ ansible_ssh_user }}"
+        vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[item.name]] }}"
+        instance_tags:
+          Name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+          Group: scale
+        count: "{{ item.count }}"
+        volumes:
+          - device_name: /dev/sda1
+            volume_type: gp2
+            volume_size: "{{ dcos.agent.disk_size }}"
+            delete_on_termination: true
+      when: region.aws
+      with_items: "{{ region.aws }}"
+      register: aws_dcos_agent
+      ignore_errors: true
+      retries: "{{ max_retries }}"
+
+    - name: Create DC/OS agents on GCP
+      gce:
+        base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        machine_type: "{{ dcos.agent.gcp.machine_type }}"
+        num_instances: "{{ item.count }}"
+        image: "{{ gcp.centos_image }}"
+        persistent_boot_disk: true
+        disk_size: "{{ dcos.agent.disk_size }}"
+        network: "{{ prefix }}-vpc-{{ item.name }}"
+        subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+        ip_forward: true
+      register: gcp_dcos_agent
+      ignore_errors: true
+      when: region.gcp and install.dcos
+      with_items: "{{ region.gcp }}"
+      retries: "{{ max_retries }}"
+
+    - name: Assign DC/OS agents to groups
+      add_host:
+        hostname: "{{ item.1.public_ip }}"
+        groupname:
+          - gcp
+          - common
+          - dcos_common
+          - dcos_agent
+      when: region.gcp and install.dcos
+      with_subelements:
+        - "{{ gcp_dcos_agent.results }}"
+        - instance_data
+
+    - name: Query DC/OS agent instances on AWS
+      ec2_instance_facts:
+        region: "{{ item.1.region }}"
+        instance_ids:
+          - "{{ item.1.id }}"
+      register: aws_dcos_agent
+      when: region.aws and install.dcos
+      until: aws_dcos_agent.instances.0.public_ip_address
+      with_subelements:
+        - "{{ aws_dcos_agent.results }}"
+        - instances
+
+    - name: Assign DC/OS agents to groups
+      add_host:
+        hostname: "{{ item.instances.0.public_ip_address }}"
+        groupname:
+          - aws
+          - common
+          - dcos_common
+          - dcos_agent
+      when: region.aws and install.dcos
+      with_items: "{{ aws_dcos_agent.results }}"
+
+- hosts: localhost
+  roles:
+    - wait_for_instances
+
+- hosts: aws
+  roles:
+    - gather_facts_aws
+
+- hosts: gcp
+  roles:
+    - gather_facts_gcp
+
+- hosts: localhost
+  tasks:
+    - name: Get DC/OS masters on AWS
+      ec2_instance_facts:
+        region: "{{ dcos.master.region }}"
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-master-{{ item.0 }}"
+      register: dcos_master_instance
+      with_indexed_items: "{{ dcos.master.zone }}"
+
+    - name: Assign DC/OS masters to groups
+      add_host:
+        hostname: "{{ item.instances.0.public_ip_address }}"
+        groupname:
+          - dcos_master
+      with_items: "{{ dcos_master_instance.results }}"
+
+    - name: Get DC/OS bootstrap node on AWS
+      ec2_instance_facts:
+        region: "{{ dcos.bootstrap.region }}"
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-bootstrap"
+      register: dcos_bootstrap_instance
+
+    - name: Assign DC/OS bootstrap instance to groups
+      add_host:
+        hostname: "{{ dcos_bootstrap_instance.instances.0.public_ip_address }}"
+        groupname:
+          - dcos_bootstrap
+
+# Just to gather facts
+- hosts: dcos_master
+- hosts: dcos_bootstrap
+
+- hosts: dcos_common
+  roles:
+    - upgrade_packages
+    - install_dcos_common
+
+- hosts: dcos_agent
+  roles:
+    - install_dcos_agent
+    - dcos_agent_add_metadata

@@ -1,0 +1,58 @@
+- name: Create AWS VPN gateway
+  ec2:
+    region: "{{ item.name }}"
+    image: "{{ region_ami_map[item.name] }}"
+    instance_type: "{{ gateway.aws.instance_type }}"
+    assign_public_ip: true
+    source_dest_check: false
+    key_name: "{{ ansible_ssh_user }}"
+    vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[item.name]] }}"
+    count_tag:
+      Name: "{{ prefix }}-gw-{{ item.name }}"
+    instance_tags:
+      Name: "{{ prefix }}-gw-{{ item.name }}"
+    exact_count: 1
+    volumes:
+      - device_name: /dev/sda1
+        volume_type: gp2
+        volume_size: "{{ gateway.disk_size }}"
+        delete_on_termination: true
+  with_items: "{{ region.aws }}"
+  register: aws_vpn_gw
+  ignore_errors: true
+  when: region.aws and region.gcp
+  until: >
+    'tagged_instances' in aws_vpn_gw
+      and aws_vpn_gw.tagged_instances.0.state == 'running'
+  retries: "{{ max_retries }}"
+
+- name: Create routes to GCP
+  ec2_vpc_route_table:
+    vpc_id: "{{ region_vpc_map[item.item.name] }}"
+    region: "{{ item.item.name }}"
+    route_table_id: "{{ route_table[region_vpc_map[item.item.name]] }}"
+    lookup: id
+    purge_routes: false
+    purge_subnets: false
+    routes:
+      - dest: 10.52.64.0/18
+        instance_id: "{{ item.tagged_instances.0.id }}"
+    state: present
+  when: region.aws and region.gcp
+  with_items: "{{ aws_vpn_gw.results }}"
+
+- name: Assign the VPN gateway to groups
+  add_host:
+    hostname: "{{ item.tagged_instances.0.public_ip }}"
+    groupname:
+      - gateway
+      - aws_gateway
+      - common
+  when: region.aws and region.gcp
+  with_items: "{{ aws_vpn_gw.results }}"
+
+- name: Add to gateway-region mappings
+  set_fact:
+    gateway_region_map: "{{ gateway_region_map | default({}) | combine({item.tagged_instances.0.public_ip: item.item.name})}}"
+  when: region.aws and region.gcp
+  with_items: "{{ aws_vpn_gw.results }}"

@@ -1,0 +1,36 @@
+{
+	"id": "/sys/pivot-db",
+	"instances": 1,
+	"cpus": 1,
+	"mem": 1024,
+	"container": {
+		"type": "DOCKER",
+		"volumes": [
+          {
+            "containerPath": "/data/db",
+            "hostPath": "/data/pivot_db",
+            "mode": "RW"
+          }
+		],
+		"docker": {
+			"image": "heliumdatacommons/mongodb",
+			"privileged": false,
+			"parameters": [],
+			"forcePullImage": true
+		}
+	},
+	"networks": [
+		{ "mode": "container/bridge" }
+	],
+	"upgradeStrategy": {
+        "minimumHealthCapacity": 0.5,
+        "maximumOverCapacity": 0
+    },
+    "constraints": [
+      [
+        "hostname",
+        "CLUSTER",
+        "{{ hostvars[groups.dcos_agent.0]['ansible_%s'|format(hostvars[groups.dcos_agent.0].ansible_default_ipv4.interface)].ipv4.address }}"
+      ]
+    ]
+}

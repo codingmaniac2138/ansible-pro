@@ -1,0 +1,10 @@
+- name: Reboot
+  shell: sleep 5 && shutdown -r now "Reboot triggered by Ansible script"
+  async: 1
+  poll: 0
+  ignore_errors: true
+  become: true
+
+- name: Wait for rebooted nodes to come back
+  wait_for_connection:
+    delay: 10

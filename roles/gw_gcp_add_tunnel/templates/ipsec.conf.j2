@@ -1,0 +1,19 @@
+# OpenSwan IPsec Configuration
+config setup
+	protostack=netkey
+	nat_traversal=yes
+	virtual_private=
+	oe=off
+{% for gw in groups.aws_gateway %}
+conn aws-{{ gw }}
+    type=tunnel
+	authby=secret
+	left=%defaultroute
+	leftid={{ inventory_hostname }}
+	leftnexthop=%defaultroute
+	leftsubnet={{ region_subnet_map[gateway_region_map[inventory_hostname]] }}
+	right={{ gw }}
+	rightsubnet={{ region_subnet_map[gateway_region_map[gw]] }}
+	pfs=yes
+	auto=start
+{% endfor %}

@@ -1,0 +1,41 @@
+- name: Create GCP VPN gateway
+  gce:
+    base_name: "{{ prefix }}-vpc-{{ item.name }}-gw"
+    zone: "{{ item.name }}-b"
+    machine_type: "{{ gateway.gcp.machine_type }}"
+    num_instances: 1
+    image: "{{ gcp.centos_image }}"
+    disk_size: "{{ gateway.disk_size }}"
+    network: "{{ prefix }}-vpc-{{ item.name }}"
+    subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+    ip_forward: true
+  register: gcp_vpn_gw
+  with_items: "{{ region.gcp }}"
+  when: region.aws and region.gcp
+  retries: "{{ max_retries }}"
+
+- name: Create routes to AWS
+  shell: >
+    gcloud compute routes create {{ prefix }}-{{ item.item.name }}-to-aws
+    --destination-range 10.52.0.0/18
+    --network {{ item.instance_data.0.network }}
+    --next-hop-instance {{ item.instance_data.0.name }}
+    --next-hop-instance-zone {{ item.instance_data.0.zone }}
+  when: region.aws and region.gcp and gcp_vpn_gw.changed
+  with_items: "{{ gcp_vpn_gw.results }}"
+
+- name: Assign the VPN gateway to groups
+  add_host:
+    hostname: "{{ item.instance_data.0.public_ip }}"
+    groupname:
+      - gateway
+      - gcp_gateway
+      - common
+  when: region.aws and region.gcp
+  with_items: "{{ gcp_vpn_gw.results }}"
+
+- name: Add to gateway-region mappings
+  set_fact:
+    gateway_region_map: "{{ gateway_region_map | default({}) | combine({item.instance_data.0.public_ip: item.item.name }) }}"
+  when: region.aws and region.gcp
+  with_items: "{{ gcp_vpn_gw.results }}"

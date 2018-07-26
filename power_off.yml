@@ -1,0 +1,70 @@
+- hosts: localhost
+  tasks:
+    - name: Stop iRODS iCAT instance on AWS
+      ec2_instance:
+        region: "{{ irods.icat.region }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-irods-icat-server"
+      async: 45
+      poll: 0
+
+    - name: Stop iRODS Resource instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-irods-resource-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+      async: 45
+      poll: 0
+
+    - name: Stop DC/OS bootstrap instance on AWS
+      ec2_instance:
+        region: "{{ dcos.bootstrap.region }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-bootstrap"
+      async: 45
+      poll: 0
+
+    - name: Stop DC/OS master instances on AWS
+      ec2_instance:
+        region: "{{ dcos.master.region }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-master-{{ item.0 }}"
+      with_indexed_items: "{{ dcos.master.zone }}"
+      async: 45
+      poll: 0
+
+    - name: Stop DC/OS agent instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: stopped
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-agent-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+      async: 45
+      poll: 0
+
+    - name: Stop iRODS Resource instances on GCP
+      gce:
+        base_name: "{{ prefix }}-irods-resource-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        num_instances: "{{ item.count.irods }}"
+        state: stopped
+      with_items: "{{ region.gcp }}"
+      async: 45
+      poll: 0
+
+    - name: Stop DC/OS agent instances on GCP
+      gce:
+        base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+        zone: "{{ item.name }}-b"
+        num_instances: "{{ item.count.dcos }}"
+        state: stopped
+      with_items: "{{ region.gcp }}"
+      async: 45
+      poll: 0
+

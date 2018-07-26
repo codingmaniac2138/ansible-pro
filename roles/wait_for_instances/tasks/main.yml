@@ -1,0 +1,19 @@
+- name: Wait for SSH of AWS instances
+  wait_for:
+    host: "{{ item }}"
+    port: 22
+    delay: 10
+    timeout: 600
+  when: >
+    'aws' in groups
+  with_items: "{{ groups.aws }}"
+
+- name: Wait for SSH of GCP instances
+  wait_for:
+    host: "{{ item }}"
+    port: 22
+    delay: 10
+    timeout: 600
+  when: >
+    'gcp' in groups
+  with_items: "{{ groups.gcp }}"

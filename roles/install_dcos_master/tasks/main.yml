@@ -1,0 +1,12 @@
+- name: Download dcos_install.py
+  get_url:
+    url: "http://{{ hostvars[groups.dcos_bootstrap.0]['ansible_%s'|format(hostvars[groups.dcos_bootstrap.0].ansible_default_ipv4.interface)].ipv4.address }}/dcos_install.sh"
+    dest: /tmp/dcos_install.sh
+    mode: 0777
+
+- name: Execute dcos_install.sh
+  shell: /tmp/dcos_install.sh master
+  args:
+    chdir: /tmp
+    executable: /bin/bash
+  become: true

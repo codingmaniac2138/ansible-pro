@@ -1,0 +1,167 @@
+- hosts: localhost
+  tasks:
+    - name: Terminate iRODS iCAT instance on AWS
+      ec2_instance:
+        region: "{{ irods.icat.region }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-irods-icat-server"
+
+    - name: Terminate iRODS Resource instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-irods-resource-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+
+    - name: Terminate DC/OS bootstrap instance on AWS
+      ec2_instance:
+        region: "{{ dcos.bootstrap.region }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-bootstrap"
+
+    - name: Terminate DC/OS master instances on AWS
+      ec2_instance:
+        region: "{{ dcos.master.region }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-master-{{ item.0 }}"
+      with_indexed_items: "{{ dcos.master.zone }}"
+
+    - name: Terminate DC/OS agent instances on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-dcos-agent-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+
+    - name: Terminate VPN gateway tunnels on AWS
+      ec2_instance:
+        region: "{{ item.name }}"
+        state: absent
+        filters:
+          'tag:Name': "{{ prefix }}-gw-{{ item.name }}"
+      with_items: "{{ region.aws }}"
+
+    - name: Terminate iRODS Resource instances on GCP
+      gce:
+        base_name: "{{ prefix }}-irods-resource-{{ item.name }}"
+        num_instances: "{{ item.count.irods }}"
+        zone: "{{ item.name }}-b"
+        state: absent
+      with_items: "{{ region.gcp }}"
+
+    - name: Terminate DC/OS agent instances on GCP
+      gce:
+        base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+        num_instances: "{{ item.count.dcos }}"
+        zone: "{{ item.name }}-b"
+        state: absent
+      with_items: "{{ region.gcp }}"
+
+    - name: Terminate VPN gateway instances on GCP
+      gce:
+        base_name: "{{ prefix }}-{{ item.name }}-gw"
+        num_instances: 1
+        zone: "{{ item.name }}-b"
+        state: absent
+      with_items: "{{ region.gcp }}"
+
+    - name: Get VPCs on AWS
+      ec2_vpc_net:
+        name: "{{ prefix }}-vpc-{{ item.1.name }}"
+        cidr_block: "{{ '10.52.%d.0/24' | format(item.0) }}"
+        region: "{{ item.1.name }}"
+        state: present
+      with_indexed_items: "{{ region.aws }}"
+      ignore_errors: true
+      register: vpc
+
+    - name: Get VPC peerings
+      ec2_vpc_peering_facts:
+        region: "{{ item.name }}"
+      with_items: "{{ region.aws }}"
+      register: vpc_peer
+
+    - name: Remove VPC peerings on AWS
+      ec2_vpc_peer:
+        region: "{{ item.0.item.name }}"
+        peering_id: "{{ item.1.vpc_peering_connection_id }}"
+        state: absent
+      with_subelements:
+        - "{{ vpc_peer.results }}"
+        - result
+
+    - name: Remove subnets on AWS
+      ec2_vpc_subnet:
+        region: "{{ item.invocation.module_args.region }}"
+        vpc_id: "{{ item.vpc.id }}"
+        cidr: "{{ item.vpc.cidr_block }}"
+        state: absent
+      when: item.vpc
+      with_items: "{{ vpc.results }}"
+
+    - name: Remove gateways on AWS
+      ec2_vpc_igw:
+        vpc_id: "{{ item.vpc.id }}"
+        region: "{{ item.invocation.module_args.region }}"
+        state: absent
+      when: item.vpc
+      with_items: "{{ vpc.results }}"
+
+    - name: Remove VPCs on AWS
+      ec2_vpc_net:
+        name: "{{ prefix }}-vpc-{{ item.1.name }}"
+        cidr_block: "{{ '10.52.%d.0/24' | format(item.0) }}"
+        region: "{{ item.1.name }}"
+        state: absent
+      with_indexed_items: "{{ region.aws }}"
+
+    - name: Delete keys on AWS
+      ec2_key:
+        name: "{{ ansible_ssh_user }}"
+        force: true
+        region: "{{ item.name }}"
+        state: absent
+      with_items: "{{ region.aws }}"
+      async: 45
+      poll: 0
+
+    - name: Remove VPC firewalls on GCP
+      gce_net:
+        name: "{{ prefix }}-vpc-{{ item.name }}"
+        fwname: "{{ prefix }}-vpc-{{ item.name }}-default"
+        state: absent
+      with_items: "{{ region.gcp }}"
+
+    - name: Remove routes on GCP
+      shell: gcloud compute routes delete {{ prefix }}-{{ item.name }}-to-aws
+      with_items: "{{ region.gcp }}"
+      ignore_errors: true
+
+    - name: Remove VPC peerings on GCP
+      shell: >
+        gcloud compute networks peerings delete peering-{{ item.0.name }}-{{ item.1.name }}
+        --network {{ prefix }}-vpc-{{ item.0.name }}
+      when: item.0.name != item.1.name
+      with_nested:
+        - "{{ region.gcp }}"
+        - "{{ region.gcp }}"
+
+    - name: Remove subnets on GCP
+      gce_net:
+        name: "{{ prefix }}-vpc-{{ item.name }}"
+        subnet_name: "{{ prefix }}-subnet-{{ item.name }}"
+        subnet_region: "{{ item.name }}"
+        state: absent
+      with_items: "{{ region.gcp }}"
+
+    - name: Remove VPCs on GCP
+      gce_net:
+        name: "{{ prefix }}-vpc-{{ item.name }}"
+        state: absent
+      with_items: "{{ region.gcp }}"
+

@@ -1,0 +1,39 @@
+- name: Create VPCs
+  gce_net:
+    name: "{{ prefix }}-vpc-{{ item.1.name }}"
+    ipv4_range: "{{ '10.52.1%02d.0/24' | format(item.0) }}"
+    subnet_name: "{{ prefix }}-subnet-{{ item.1.name }}"
+    subnet_region: "{{ item.1.name }}"
+    mode: custom
+    state: present
+  with_indexed_items: "{{ region.gcp }}"
+  when: region.gcp
+  register: gcp_vpc
+
+- name: Create default firewall rules
+  gce_net:
+    name: "{{ prefix }}-vpc-{{ item.name }}"
+    fwname: "{{ prefix }}-vpc-{{ item.name }}-default"
+    allowed: all
+    src_range: ['0.0.0.0/0']
+    state: present
+  when: region.gcp and gcp_vpc.changed
+  with_items: "{{ region.gcp }}"
+
+- name: Create VPC peerings
+  shell: >
+    gcloud compute networks peerings create peering-{{ item.0.name }}-{{ item.1.name }}
+    --network {{ prefix }}-vpc-{{ item.0.name }}
+    --peer-network {{ prefix }}-vpc-{{ item.1.name }}
+    --auto-create-routes
+  when: region.gcp and item.0.name != item.1.name and gcp_vpc.changed
+  with_nested:
+    - "{{ region.gcp }}"
+    - "{{ region.gcp }}"
+
+- name: Add to region-subnet mapping
+  set_fact:
+    region_subnet_map: "{{ region_subnet_map | default({}) | combine({item.item.1.name: item.ipv4_range}) }}"
+  when: region.gcp
+  with_items: "{{ gcp_vpc.results }}"
+

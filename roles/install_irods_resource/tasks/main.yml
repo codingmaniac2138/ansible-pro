@@ -1,0 +1,74 @@
+- name: Download iRODS resource server RPM
+  get_url:
+    url: ftp://ftp.renci.org/pub/irods/releases/4.1.11/centos7/irods-resource-4.1.11-centos7-x86_64.rpm
+    dest: /tmp/irods-resource.rpm
+
+- name: Install iRODS resource server
+  yum:
+    name: /tmp/irods-resource.rpm
+    state: present
+  become: true
+
+- name: Remove interactions from iRODS setup scripts
+  replace:
+    path: "/var/lib/irods/packaging/{{ item }}.sh"
+    regexp: '(^ *read .*)'
+    replace: '#\1'
+  become: true
+  with_items:
+    - setup_irods_service_account
+    - setup_irods_configuration
+    - setup_resource
+    - get_icat_server_password
+
+- name: Set ICAT host
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_resource.sh
+    insertafter: '^# *read ICATHOST'
+    line: ICATHOST={{ hostvars[groups.irods_icat.0]['ansible_%s'|format(hostvars[groups.irods_icat.0].ansible_default_ipv4.interface)].ipv4.address }}
+  become: true
+
+- name: Set ICAT zone
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_resource.sh
+    insertafter: '^# *read ICATZONE'
+    line: "ICATZONE=tempZone"
+  become: true
+
+- name: set iRODS admin password
+  lineinfile:
+    path: /var/lib/irods/packaging/get_icat_server_password.sh
+    insertafter: '^# *read -s IRODS_ADMIN_PASSWORD'
+    line: "IRODS_ADMIN_PASSWORD={{ irods.admin_password }}"
+  become: true
+
+- name: Name resource using region name
+  replace:
+    path: /var/lib/irods/packaging/setup_resource.sh
+    regexp: '^LOCAL_RESOURCE_NAME=.*'
+    replace: "LOCAL_RESOURCE_NAME={{ region }}-resource"
+  become: true
+
+- name: Run setup_irods.sh
+  shell: /bin/bash /var/lib/irods/packaging/setup_irods.sh
+  become: true
+
+- name: Add region metadata to the resource
+  shell: "imeta add -R {{ region }}-resource region {{ region }}"
+  become: true
+  become_user: irods
+
+- name: Add cloud metadata to the resource
+  shell: "imeta add -R {{ region }}-resource cloud {{ cloud }}"
+  become: true
+  become_user: irods
+
+- name: Enable iRODS at boot
+  systemd:
+    name: irods
+    enabled: true
+  become: true
+
+
+
+

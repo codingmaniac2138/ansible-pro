@@ -1,0 +1,137 @@
+ansible_ssh_user: centos
+ansible_ssh_public_key_file: ~/.ssh/id_rsa.pub
+ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
+install:
+  dcos: true
+  irods: false
+
+prefix: helium-dc
+max_retries: 5
+vpn_secret: ToP_SecREt
+supernet: 10.52.0.0/16
+region:
+  aws:
+    - name: us-east-1
+      count:
+        dcos: 3
+        irods: 1
+      zones:
+        - a
+        - b
+    - name: us-east-2
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - a
+        - b
+    - name: us-west-1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - a
+        - b
+    - name: us-west-2
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - a
+        - b
+    - name: ca-central-1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - a
+        - b
+  gcp:
+    - name: us-east1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - b
+        - c
+    - name: us-east4
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - b
+        - c
+    - name: us-central1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - b
+        - c
+    - name: us-west1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - b
+        - c
+    - name: northamerica-northeast1
+      count:
+        dcos: 1
+        irods: 1
+      zones:
+        - a
+        - b
+
+aws:
+  centos_ami_product_code: aw0evgkw8e5c1q413zgy5pjce
+
+gcp:
+  centos_image: centos-7
+
+gateway:
+  disk_size: 10
+  aws:
+    instance_type: c5.large
+  gcp:
+    machine_type: n1-standard-2
+
+irods:
+  admin_password: rods
+  rest_api:
+    port: 8080
+  icat:
+    region: us-east-1
+    instance_type: c5.large
+    disk_size: 8
+  resource:
+    disk_size: 30
+    aws:
+      instance_type: c5.large
+    gcp:
+      machine_type: n1-standard-4
+
+dcos:
+  name: Helium Data Commons
+  bundle_url: https://downloads.dcos.io/dcos/stable/1.10.0/dcos_generate_config.sh
+  bootstrap:
+    instance_type: c5.large
+    disk_size: 8
+    region: us-east-1
+  master:
+    instance_type: c5.large
+    disk_size: 30
+    region: us-east-1
+    zone:
+      - us-east-1d
+  agent:
+    disk_size: 200
+    aws:
+      instance_type: m5.xlarge #c5.xlarge
+    gcp:
+      machine_type: n1-highmem-8 #n1-standard-4 
+  dns_servers:
+    - 8.8.4.4
+    - 8.8.8.8
+

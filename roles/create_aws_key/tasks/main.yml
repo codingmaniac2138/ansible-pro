@@ -1,0 +1,11 @@
+- name: import key to AWS
+  ec2_key:
+    name: "{{ ansible_ssh_user }}"
+    key_material: "{{ lookup('file', ansible_ssh_public_key_file) }}"
+    force: false
+    region: "{{ item.name }}"
+    state: present
+  when: region.aws
+  with_items: "{{ region.aws }}"
+
+

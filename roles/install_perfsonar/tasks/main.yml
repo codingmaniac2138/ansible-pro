@@ -1,0 +1,92 @@
+- name: Import Internet2 RPM key
+  rpm_key:
+    key: http://software.internet2.edu/rpms/RPM-GPG-KEY-Internet2
+    state: present
+  when: install.perfsonar
+  become: true
+
+- name: Install dependencies
+  yum:
+    name: "{{ item }}"
+    state: present
+  become: true
+  when: install.perfsonar
+  with_items:
+    - epel-release
+    - vim
+    - ntp
+    - java
+    - http://software.internet2.edu/rpms/el7/x86_64/main/RPMS/perfSONAR-repo-0.8-1.noarch.rpm
+    - '@console-internet'
+    - '@base'
+    - '@core'
+
+- name: Install PerfSONAR
+  yum:
+    name: perfsonar-toolkit
+    state: present
+  when: install.perfsonar
+  become: true
+
+- name: Configure firewall
+  shell: /usr/lib/perfsonar/scripts/configure_firewall install
+  when: install.perfsonar
+
+- name: Configure NTP
+  shell: /usr/lib/perfsonar/scripts/configure_ntpd new
+  become: true
+  when: install.perfsonar
+
+- name: Configure SystemD
+  shell: /usr/lib/perfsonar/scripts/configure_sysctl
+  when: install.perfsonar
+
+- name: Configure service watcher
+  shell: /usr/lib/perfsonar/scripts/service_watcher
+  when: install.perfsonar
+
+- name: Restart PerfSONAR daemons
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+  become: true
+  when: install.perfsonar
+  with_items:
+    - ntpd
+    - pscheduler-scheduler
+    - pscheduler-runner
+    - pscheduler-archiver
+    - pscheduler-ticker
+    - perfsonar-lsregistrationdaemon
+    - bwctl-server
+    - owamp-server
+
+- name: Configure sysctl
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+  become: true
+  when: install.perfsonar
+  with_items:
+    - key: net.core.rmem_default
+      value: 16777216
+    - key: net.core.wmem_default
+      value: 16777216
+    - key: net.ipv4.tcp_mtu_probing
+      value: 1
+    - key: net.core.netdev_budget
+      value: 600
+
+- name: Modify permissions of /var/log/esmond
+  file:
+    path: /var/log/esmond
+    mode: 0777
+    recurse: true
+  when: install.perfsonar
+  become: true
+
+
+
+

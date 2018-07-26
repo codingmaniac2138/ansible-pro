@@ -1,0 +1,6 @@
+- name: Store gateway variables
+  template:
+    src: gateway.j2
+    dest: group_vars/gateway
+  when: >
+    'gateway' in groups

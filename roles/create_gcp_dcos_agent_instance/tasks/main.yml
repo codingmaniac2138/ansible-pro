@@ -1,0 +1,30 @@
+- name: Create DC/OS agents on GCP
+  gce:
+    base_name: "{{ prefix }}-dcos-agent-{{ item.name }}"
+    zone: "{{ item.name }}-b"
+    machine_type: "{{ dcos.agent.gcp.machine_type }}"
+    num_instances: "{{ item.count.dcos }}"
+    image: "{{ gcp.centos_image }}"
+    disk_size: "{{ dcos.agent.disk_size }}"
+    persistent_boot_disk: true
+    network: "{{ prefix }}-vpc-{{ item.name }}"
+    subnetwork: "{{ prefix }}-subnet-{{ item.name }}"
+    ip_forward: true
+  register: gcp_dcos_agent
+  ignore_errors: true
+  when: region.gcp and install.dcos
+  with_items: "{{ region.gcp }}"
+  retries: "{{ max_retries }}"
+
+- name: Assign DC/OS agents to groups
+  add_host:
+    hostname: "{{ item.1.public_ip }}"
+    groupname:
+      - gcp
+      - common
+      - dcos_common
+      - dcos_agent
+  when: region.gcp and install.dcos
+  with_subelements:
+    - "{{ gcp_dcos_agent.results }}"
+    - instance_data

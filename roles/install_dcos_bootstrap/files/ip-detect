@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -o nounset -o errexit
+export PATH=/usr/sbin:/usr/bin:$PATH
+PRIMARY_IFACE=$(route | grep default | awk '{print $8}')
+echo $(ip addr show ${PRIMARY_IFACE} | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)

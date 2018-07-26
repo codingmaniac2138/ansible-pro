@@ -1,0 +1,65 @@
+{
+	"id": "/sys/pivot",
+	"instances": 1,
+	"cpus": 1,
+	"mem": 2048,
+	"args":
+	[
+	    "--master", "{{ hostvars[groups.dcos_master.0]['ansible_%s'|format(hostvars[groups.dcos_agent.0].ansible_default_ipv4.interface)].ipv4.address }}",
+        "--port", "9191",
+    	"--n_parallel", "2",
+    	"--db_host", "pivot-db-sys.marathon.containerip.dcos.thisdcos.directory"
+	],
+	"container": {
+		"type": "DOCKER",
+		"volumes": [],
+		"docker": {
+			"image": "heliumdatacommons/pivot",
+			"privileged": false,
+			"parameters": [],
+			"forcePullImage": true
+		}
+	},
+	"networks": [
+		{ "mode": "host" }
+	],
+	"portDefinitions": [
+		{
+			"labels": {
+				"VIP_0": "/pivot:9191"
+			},
+			"protocol": "tcp",
+			"port": 9191
+		}
+	],
+	"requirePorts": true,
+    "healthChecks": [
+	     {
+	      "gracePeriodSeconds": 300,
+	      "intervalSeconds": 60,
+	      "maxConsecutiveFailures": 3,
+	      "portIndex": 0,
+	      "timeoutSeconds": 20,
+	      "delaySeconds": 15,
+	      "protocol": "MESOS_HTTP",
+	      "path": "/ping"
+	    }
+    ],
+    "labels": {
+	    "DCOS_SERVICE_SCHEME": "http",
+	    "DCOS_SERVICE_NAME": "pivot",
+	    "DCOS_PACKAGE_FRAMEWORK_NAME": "pivot",
+	    "DCOS_SERVICE_PORT_INDEX": "0"
+    },
+     "upgradeStrategy": {
+        "maximumOverCapacity": 0,
+        "minimumHealthCapacity": 0
+     },
+    "constraints": [
+      [
+        "hostname",
+        "CLUSTER",
+        "{{ hostvars[groups.dcos_agent.0]['ansible_%s'|format(hostvars[groups.dcos_agent.0].ansible_default_ipv4.interface)].ipv4.address }}"
+      ]
+    ]
+}

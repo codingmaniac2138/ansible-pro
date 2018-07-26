@@ -1,0 +1,38 @@
+- name: Create DC/OS masters
+  ec2:
+    region: "{{ dcos.master.region }}"
+    image: "{{ region_ami_map[dcos.master.region] }}"
+    instance_type: "{{ dcos.master.instance_type }}"
+    assign_public_ip: yes
+    key_name: "{{ ansible_ssh_user }}"
+    vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[dcos.master.region]] }}"
+    count_tag:
+      Name: "{{ prefix }}-dcos-master-{{ item.0 }}"
+    instance_tags:
+      Name: "{{ prefix }}-dcos-master-{{ item.0 }}"
+    exact_count: 1
+    volumes:
+      - device_name: /dev/sda1
+        volume_type: gp2
+        volume_size: "{{ dcos.master.disk_size }}"
+        delete_on_termination: true
+  with_indexed_items: "{{ dcos.master.zone }}"
+  when: region.aws and install.dcos
+  register: dcos_master_instance
+  until: >
+    'tagged_instances' in dcos_master_instance and dcos_master_instance.tagged_instances.0.public_ip
+  retries: "{{ max_retries }}"
+
+- name: Assign DC/OS masters to groups
+  add_host:
+    hostname: "{{ item.1.public_ip }}"
+    groupname:
+      - aws
+      - common
+      - dcos_common
+      - dcos_master
+  when: region.aws and install.dcos
+  with_subelements:
+    - "{{ dcos_master_instance.results }}"
+    - tagged_instances
+

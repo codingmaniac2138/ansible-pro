@@ -1,0 +1,40 @@
+- name: Create DC/OS agents
+  ec2:
+    region: "{{ item.name }}"
+    image: "{{ region_ami_map[item.name] }}"
+    instance_type: "{{ dcos.agent.aws.instance_type }}"
+    assign_public_ip: yes
+    key_name: "{{ ansible_ssh_user }}"
+    vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[item.name]] }}"
+    count_tag:
+      Name: "{{ prefix }}-dcos-agent-{{item.name}}"
+    instance_tags:
+      Name: "{{ prefix }}-dcos-agent-{{item.name}}"
+    exact_count: "{{ item.count.dcos }}"
+    volumes:
+      - device_name: /dev/sda1
+        volume_type: gp2
+        volume_size: "{{ dcos.agent.disk_size }}"
+        delete_on_termination: true
+  when: region.aws and install.dcos
+  with_items: "{{ region.aws }}"
+  register: aws_dcos_agent
+  ignore_errors: true
+  until: >
+    'tagged_instances' in aws_dcos_agent
+    and aws_dcos_agent.tagged_instances.0.public_ip
+  retries: "{{ max_retries }}"
+
+
+- name: Assign DC/OS agents to groups
+  add_host:
+    hostname: "{{ item.1.public_ip }}"
+    groupname:
+      - aws
+      - common
+      - dcos_common
+      - dcos_agent
+  when: region.aws and install.dcos
+  with_subelements:
+    - "{{ aws_dcos_agent.results }}"
+    - tagged_instances

@@ -1,0 +1,60 @@
+- name: Accept local traffic
+  iptables:
+    chain: INPUT
+    in_interface: "{{ item }}"
+    jump: ACCEPT
+  with_items:
+    - lo
+    - docker0
+    - vtep1024
+  become: true
+
+- name: Accept LAN traffic
+  iptables:
+    chain: INPUT
+    source: "{{ supernet }}"
+    jump: ACCEPT
+  become: true
+
+- name: Reject external TCP packets to Spartan
+  iptables:
+    chain: INPUT
+    protocol: tcp
+    destination: "{{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}"
+    destination_port: "{{ item }}"
+    jump: REJECT
+  with_items:
+    - 53
+    - 63053
+    - 62501
+    - 62502
+  become: true
+
+- name: Reject external UDP packets to Spartan
+  iptables:
+    chain: INPUT
+    protocol: udp
+    destination: "{{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}"
+    destination_port: "{{ item }}"
+    jump: REJECT
+  with_items:
+    - 53
+    - 63053
+    - 62501
+    - 62502
+  become: true
+
+- name: Reject inbound traffic to critical endpoints
+  iptables:
+    chain: INPUT
+    protocol: tcp
+    destination: "{{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}"
+    destination_port: "{{ item }}"
+    jump: REJECT
+  with_items:
+    - 2181
+    - 5050
+    - 8080
+    - 8181
+    - 9090
+  become: true

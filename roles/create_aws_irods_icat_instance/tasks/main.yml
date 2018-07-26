@@ -1,0 +1,36 @@
+- name: Create iRODS iCAT server
+  ec2:
+    region: "{{ irods.icat.region }}"
+    image: "{{ region_ami_map[irods.icat.region] }}"
+    instance_type: "{{ irods.icat.instance_type }}"
+    assign_public_ip: yes
+    key_name: "{{ ansible_ssh_user }}"
+    vpc_subnet_id: "{{ vpc_subnet_map[region_vpc_map[irods.icat.region]] }}"
+    count_tag:
+      Name: "{{ prefix }}-irods-icat-server"
+    instance_tags:
+      Name: "{{ prefix }}-irods-icat-server"
+    exact_count: 1
+    volumes:
+      - device_name: /dev/sda1
+        volume_type: gp2
+        volume_size: "{{ irods.icat.disk_size }}"
+        delete_on_termination: true
+  register: irods_icat_instance
+  when: region.gcp and install.irods
+  until: >
+    'tagged_instances' in irods_icat_instance
+      and irods_icat_instance.tagged_instances
+      and irods_icat_instance.tagged_instances.0.public_ip
+  retries: "{{ max_retries }}"
+
+- name: Assign iRODS iCAT to groups
+  add_host:
+    hostname: "{{ irods_icat_instance.tagged_instances.0.public_ip }}"
+    groupname:
+      - aws
+      - common
+      - irods_common
+      - irods_icat
+  when: region.gcp and install.irods
+

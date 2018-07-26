@@ -1,0 +1,10 @@
+- name: Update yum
+  shell: yum update -y
+  become: true
+
+- name: Upgrade packages
+  yum:
+    name: '*'
+    state: latest
+    update_cache: yes
+  become: true

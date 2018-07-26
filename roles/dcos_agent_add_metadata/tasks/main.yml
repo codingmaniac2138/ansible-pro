@@ -1,0 +1,24 @@
+- name: Add attributes
+  template:
+    src: mesos-slave-common.j2
+    dest: /var/lib/dcos/mesos-slave-common
+    force: yes
+  become: true
+
+- name: Stop Mesos slave
+  systemd:
+    state: stopped
+    name: dcos-mesos-slave
+  become: true
+
+- name: Remove slave states
+  shell: rm -rf /var/lib/mesos/slave/meta/slaves/*
+  become: true
+
+- name: Start Mesos slave
+  systemd:
+    state: started
+    name: dcos-mesos-slave
+    enabled: yes
+  become: true
+

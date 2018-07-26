@@ -1,0 +1,38 @@
+- name: Install dependencies
+  yum:
+    name: "{{ item }}"
+    state: present
+  become: true
+  with_items:
+    - postgresql
+    - postgresql-server
+    - postgresql-odbc
+    - unixODBC
+
+- name: Initialize PostgreSQL server
+  shell: postgresql-setup initdb
+  ignore_errors: yes
+  become: true
+
+- name: Modify postgresql.conf to listen to the network
+  lineinfile:
+    path: /var/lib/pgsql/data/postgresql.conf
+    line: "listen_addresses='*'"
+  become: true
+
+- name: Modify pg_hba.conf to allow access within the network
+  lineinfile:
+    path: /var/lib/pgsql/data/pg_hba.conf
+    regexp: '^host.*all.*all.*127.0.0.1/32.*ident'
+    line: "host    all             all             {{ supernet }}            trust"
+  become: true
+
+- name: Start PostgreSQL server
+  service:
+    name: postgresql
+    state: started
+  become: true
+
+
+
+

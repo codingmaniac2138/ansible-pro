@@ -1,0 +1,9 @@
+gateway_region_map:
+{% for gw in gateway_region_map %}
+   {{ gw }}: {{ gateway_region_map[gw] }}
+{% endfor %}
+
+region_subnet_map:
+{% for r in region_subnet_map %}
+    {{ r }}: {{ region_subnet_map[r] }}
+{% endfor %}

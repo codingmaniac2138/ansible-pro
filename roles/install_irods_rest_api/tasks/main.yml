@@ -1,0 +1,88 @@
+- name: Install Python 3.6 repo
+  yum:
+    name: https://centos7.iuscommunity.org/ius-release.rpm
+    state: present
+    validate_certs: false
+  become: true
+
+- name: Install required packages
+  yum:
+    name: "{{ item }}"
+    state: present
+    validate_certs: false
+  become: true
+  with_items:
+    - python36u
+    - python36u-pip
+    - python36u-devel
+    - git
+
+- name: Create pip symlink
+  file:
+    src: /usr/bin/pip3.6
+    dest: /usr/bin/pip
+    state: link
+  become: true
+
+- name: Create Python3.6 symlink
+  file:
+    src: /usr/bin/python3.6
+    dest: /usr/bin/python3
+    state: link
+  become: true
+
+- name: Clean up obsolete iRODS API
+  file:
+    path: /opt/network-aware-irods-api
+    state: absent
+  become: true
+
+- name: Clone network-aware-irods-api
+  git:
+    repo: https://github.com/heliumdatacommons/network-aware-irods-api.git
+    dest: /opt/network-aware-irods-api
+    clone: true
+  become: true
+
+- name: Replace API endpoint in swagger.yaml
+  replace:
+    path: /opt/network-aware-irods-api/server/swagger/swagger.yaml
+    regexp: 'host: "localhost:8080"'
+    replace: 'host: "{{ groups.irods_icat.0 }}:{{ irods.rest_api.port }}"'
+  become: true
+
+- name: Install dependencies
+  pip:
+    requirements: /opt/network-aware-irods-api/server/requirements.txt
+  become: true
+
+- name: Create connexion.ini
+  template:
+    src: connexion.ini.j2
+    dest: /opt/network-aware-irods-api/server/ini/connexion.ini
+    force: true
+  become: true
+
+- name: Create Systemd config file
+  copy:
+    src: irods-api.service
+    dest: /etc/systemd/system/multi-user.target.wants/irods-api.service
+    force: true
+  become: true
+
+- name: Reload Systemd daemons
+  systemd:
+    daemon_reload: true
+  become: true
+
+- name: Start iRODS API
+  systemd:
+    name: irods-api
+    state: started
+  become: true
+
+
+
+
+
+

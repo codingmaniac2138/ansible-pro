@@ -1,0 +1,18 @@
+[connexion]
+server =
+debug = True
+port = {{ irods.rest_api.port }}
+keyfile =
+certfile =
+
+[irods]
+host = {{ hostvars[groups.irods_icat.0]['ansible_%s'|format(hostvars[groups.irods_icat.0].ansible_default_ipv4.interface)].ipv4.address }}
+port = 1247
+user = rods
+password = {{ irods.admin_password }}
+zone = tempZone
+client_user = rods
+client_zone = tempZone
+
+[sys-path]
+controllers = /opt/network-aware-irods-api/server/controllers/

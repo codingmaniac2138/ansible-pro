@@ -1,0 +1,103 @@
+- name: Download iRODS iCAT RPM
+  get_url:
+    url: ftp://ftp.renci.org/pub/irods/releases/4.1.11/centos7/irods-icat-4.1.11-centos7-x86_64.rpm
+    dest: /tmp/irods-icat.rpm
+
+- name: Install iRODS iCAT
+  yum:
+    name: /tmp/irods-icat.rpm
+    state: present
+  become: true
+
+- name: Download iRODS database plugins
+  get_url:
+    url: ftp://ftp.renci.org/pub/irods/releases/4.1.11/centos7/irods-database-plugin-postgres-1.11-centos7-x86_64.rpm
+    dest: /tmp/irods-db-plugin.rpm
+
+- name: Install iRODS database plugin
+  yum:
+    name: /tmp/irods-db-plugin.rpm
+    state: present
+  become: true
+
+- name: Create database user "irods"
+  shell: createuser -s irods
+  become: true
+  become_user: postgres
+
+- name: Create database "ICAT"
+  shell: createdb -O irods ICAT
+  become: true
+  become_user: postgres
+
+- name: Remove interactions from iRODS setup scripts
+  replace:
+    path: "/var/lib/irods/packaging/{{ item }}.sh"
+    regexp: '(^ *read .*)'
+    replace: '#\1'
+  become: true
+  with_items:
+    - setup_irods_service_account
+    - setup_irods_configuration
+    - setup_irods_database
+
+- name: Add iRODS admin password to setup_irods_configuration.sh
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_irods_configuration.sh
+    insertafter: '^# *read -s MYADMINPASSWORD'
+    line: 'MYADMINPASSWORD={{ irods.admin_password }}'
+  become: true
+
+- name: Set ICAT database server host
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_irods_database.sh
+    insertafter: '^# *read DATABASEHOSTORIP'
+    line: "DATABASEHOSTORIP={{ hostvars[inventory_hostname]['ansible_%s'|format(ansible_default_ipv4.interface)].ipv4.address }}"
+  become: true
+
+- name: Set ICAT database server port
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_irods_database.sh
+    insertafter: '^# *read DATABASEPORT'
+    line: 'DATABASEPORT=5432'
+  become: true
+
+- name: set ICAT database user
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_irods_database.sh
+    insertafter: '^# *read DATABASEUSER'
+    line: "DATABASEUSER=irods"
+  become: true
+
+- name: Set ICAT database password
+  lineinfile:
+    path: /var/lib/irods/packaging/setup_irods_database.sh
+    insertafter: '^# *read -s DATABASEPASSWORD'
+    line: 'DATABASEPASSWORD='
+  become: true
+
+- name: Run setup_irods.sh
+  shell: /bin/bash /var/lib/irods/packaging/setup_irods.sh
+  become: true
+
+- name: Remove DemoResc
+  shell: /bin/iadmin rmresc demoResc
+  become: true
+  become_user: irods
+
+- name: Enable PostgreSQL and iRODS at boot
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - postgresql
+    - irods
+  become: true
+
+
+
+
+
+
+
+

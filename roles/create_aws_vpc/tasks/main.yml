@@ -1,0 +1,157 @@
+- name: Create VPCs
+  ec2_vpc_net:
+    name: "{{ prefix }}-vpc-{{ item.1.name }}"
+    cidr_block: "{{ '10.52.%d.0/24' | format(item.0) }}"
+    region: "{{ item.1.name }}"
+    state: present
+  with_indexed_items: "{{ region.aws }}"
+  retries: "{{ max_retries }}"
+  when: region.aws
+  register: vpc_out
+
+- name: Create region-VPC mapping
+  set_fact:
+    region_vpc_map: "{{ region_vpc_map | default({}) | combine({item.item.1.name: item.vpc.id}) }}"
+  with_items: "{{ vpc_out.results }}"
+
+- debug:
+    msg: "{{ region_vpc_map }}"
+
+- name: Modify default security group
+  ec2_group:
+    name: default
+    description: Default security group, allow all traffic, not for production
+    vpc_id: "{{ region_vpc_map[item.name] }}"
+    region: "{{ item.name }}"
+    rules:
+      - proto: all
+        cidr_ip: 0.0.0.0/0
+    state: present
+  when: region.aws and vpc_out.changed
+  with_items: "{{ region.aws }}"
+
+- name: Create VPC peerings
+  ec2_vpc_peer:
+    region: "{{ item.0.item.1.name }}"
+    vpc_id: "{{ item.0.vpc.id }}"
+    peer_region: "{{ item.1.item.1.name }}"
+    peer_vpc_id: "{{ item.1.vpc.id }}"
+    state: present
+  register: peering_out
+  when: region.aws and item.0.item.0 < item.1.item.0
+  with_nested:
+    - "{{ vpc_out.results }}"
+    - "{{ vpc_out.results }}"
+
+- name: Accept VPC peerings
+  ec2_vpc_peer:
+    region: "{{ item.invocation.module_args.peer_region }}"
+    peering_id: "{{ item.peering_id }}"
+    state: accept
+  when: region.aws and item is not skipped
+  with_items: "{{ peering_out.results }}"
+  retries: "{{ max_retries }}"
+
+- name: Create route tables
+  ec2_vpc_route_table_facts:
+    region: "{{ item.item.1.name }}"
+    filters:
+      vpc_id: "{{ item.vpc.id }}"
+  when: region.aws
+  register: route_tables
+  with_items: "{{ vpc_out.results }}"
+
+- name: Create VPC-route table mappings
+  set_fact:
+    route_table: "{{ route_table | default({}) | combine({item.route_tables.0.vpc_id: item.route_tables.0.id}) }}"
+  when: region.aws
+  with_items: "{{ route_tables.results }}"
+
+- name: Collect Internet gateway
+  ec2_vpc_igw:
+    tags:
+      Name: "igw-{{ prefix }}-{{ item.name }}"
+    vpc_id: "{{ region_vpc_map[item.name] }}"
+    region: "{{ item.name }}"
+    state: present
+  with_items: "{{ region.aws }}"
+  when: region.aws
+  register: igw_out
+
+- name: Create region-Internet gateway mapping
+  set_fact:
+    region_igw_map: "{{ region_igw_map | default({}) | combine({item.item.name: item.gateway_id}) }}"
+  when: region.aws
+  with_items: "{{ igw_out.results }}"
+
+- name: Add Internet gateway to route table
+  ec2_vpc_route_table:
+    vpc_id: "{{ region_vpc_map[item.name] }}"
+    region: "{{ item.name }}"
+    route_table_id: "{{ route_table[region_vpc_map[item.name]] }}"
+    lookup: id
+    purge_routes: false
+    purge_subnets: false
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ region_igw_map[item.name] }}"
+    state: present
+  when: region.aws
+  with_items: "{{ region.aws }}"
+
+- name: Add VPC peerings to route table 1
+  ec2_vpc_route_table:
+    vpc_id: "{{ item.item.0.vpc.id }}"
+    region: "{{ item.item.0.item.1.name }}"
+    route_table_id: "{{ route_table[item.item.0.vpc.id] }}"
+    lookup: id
+    purge_routes: false
+    purge_subnets: false
+    routes:
+      - dest: "{{ item.item.1.vpc.cidr_block}}"
+        vpc_peering_connection_id: "{{ item.peering_id }}"
+    state: present
+  when: region.aws and item is not skipped
+  with_items:
+    - "{{ peering_out.results }}"
+
+- name: Add VPC peerings to route table 2
+  ec2_vpc_route_table:
+    vpc_id: "{{ item.item.1.vpc.id }}"
+    region: "{{ item.item.1.item.1.name }}"
+    route_table_id: "{{ route_table[item.item.1.vpc.id] }}"
+    lookup: id
+    purge_routes: false
+    purge_subnets: false
+    routes:
+      - dest: "{{ item.item.0.vpc.cidr_block}}"
+        vpc_peering_connection_id: "{{ item.peering_id }}"
+    state: present
+  when: region.aws and item is not skipped
+  with_items:
+    - "{{ peering_out.results }}"
+
+- name: Create subnet
+  ec2_vpc_subnet:
+    region: "{{ item.item.1.name }}"
+    state: present
+    vpc_id: "{{ item.vpc.id }}"
+    cidr: "{{ item.vpc.cidr_block }}"
+  with_items: "{{ vpc_out.results }}"
+  register: subnet_out
+  when: region.aws
+  until: >
+    'subnet' in subnet_out and subnet_out.subnet
+  retries: "{{ max_retries }}"
+
+- name: Create VPC-subnet mapping
+  set_fact:
+    vpc_subnet_map: "{{ vpc_subnet_map | default({}) | combine({item.subnet.vpc_id: item.subnet.id}) }}"
+  when: region.aws
+  with_items: "{{ subnet_out.results }}"
+
+- name: Add to region-subnet mapping
+  set_fact:
+    region_subnet_map: "{{ region_subnet_map | default({}) | combine({item.item.1.name: item.vpc.cidr_block}) }}"
+  when: region.aws
+  with_items: "{{ vpc_out.results }}"

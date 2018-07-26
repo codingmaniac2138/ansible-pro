@@ -1,0 +1,14 @@
+- name: Look up CentOS 7 image
+  ec2_ami_facts:
+    region: "{{ item.name }}"
+    filters:
+      product-code: "{{ aws.centos_ami_product_code }}"
+  register: ami_facts_out
+  when: region.aws
+  with_items: "{{ region.aws }}"
+
+- name: Collect AMI info by region
+  set_fact:
+    region_ami_map: "{{ region_ami_map | default({}) | combine({item.item.name: (item.images | selectattr('ena_support') | sort(attribute='creation_date') | last).image_id }) }}"
+  when: region.aws
+  with_items: "{{ ami_facts_out.results }}"

@@ -1,0 +1,15 @@
+---
+bootstrap_url: http://{{ hostvars[groups.dcos_bootstrap.0]['ansible_%s'|format(hostvars[groups.dcos_bootstrap.0].ansible_default_ipv4.interface)].ipv4.address }}:80
+cluster_name: {{ dcos.name }}
+exhibitor_storage_backend: static
+master_discovery: static
+ip_detect_public_filename: genconf/ip-detect
+master_list:
+{% for host in groups.dcos_master %}
+- {{ hostvars[host]['ansible_%s'|format(hostvars[host].ansible_default_ipv4.interface)].ipv4.address }}
+{% endfor %}
+resolvers:
+{% for dns in dcos.dns_servers %}
+- {{dns}}
+{% endfor%}
+
